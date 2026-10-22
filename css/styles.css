@@ -159,3 +159,5 @@ input:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color
   .sheet { columns: 2; }
   .sheet-sec h3 { color: #000; }
 }
+.panel.smart { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border-color: var(--brand); background: var(--accent); }
+.panel.smart p { margin: 4px 0 0; }

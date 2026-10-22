@@ -103,7 +103,8 @@
         h("h2", null, "Today's plan"),
         h("ol", { class: "plan" },
           h("li", null, due ? `Review ${Math.min(due, 40)} flashcards that are due (${due} waiting). ` : "No flashcards due. Learn some new ones. ", h("a", { href: "#/cards" }, "Flashcards")),
-          h("li", null, `Weakest area right now: ${A.chapterName(weakest.ch)}. Quiz it, then drill it. `, h("a", { href: `#/quiz?ch=${weakest.ch}` }, "Quiz this chapter")),
+          h("li", null, "Take a smart quiz: 20 questions aimed at your weak spots and past mistakes. ", h("a", { href: "#/quiz?smart=1" }, "Smart quiz")),
+          h("li", null, `Weakest area right now: ${A.chapterName(weakest.ch)}. Drill it. `, h("a", { href: `#/quiz?ch=${weakest.ch}` }, "Quiz this chapter")),
           h("li", null, "Do one full Form 1040 problem every day until the exam; it is guaranteed to be on it. ", h("a", { href: "#/form" }, "Form 1040")),
           h("li", null, days <= 4 ? "Take a timed mock exam today. " : "Take a mock exam this weekend. ", h("a", { href: "#/mock" }, "Mock exam")))),
       h("section", { class: "tiles" },
@@ -182,7 +183,31 @@
     const r = A.rng(seed);
     return r.shuffle(pool).sort((a, b) => mcRec(a.id).seen - mcRec(b.id).seen).slice(0, n);
   }
+  // Smart quiz: weight every question by how weak its chapter is, past misses, exam flags and
+  // whether it has been seen, then draw without replacement, at most 4 per chapter.
+  function smartPick(n) {
+    const r = A.rng(A.newSeed());
+    const chAcc = {};
+    A.chapters.forEach(c => { const s = chapterStats(c.ch); chAcc[c.ch] = s.mcAcc === null ? 0.35 : s.mcAcc; });
+    let pool = A.allMC().map(q => {
+      const rec = mcRec(q.id);
+      const w = 1 + (1 - chAcc[q.ch]) * 3 + (rec.lastWrong ? 3 : 0) + (q.star ? 1.5 : 0) + (rec.seen ? 0 : 1) - Math.min(rec.right, 3) * 0.4;
+      return { q, w: Math.max(0.15, w) };
+    });
+    const out = [], perCh = {};
+    while (out.length < n && pool.length) {
+      const total = pool.reduce((s, x) => s + x.w, 0);
+      let t = r.next() * total, i = 0;
+      while (i < pool.length - 1 && (t -= pool[i].w) > 0) i++;
+      const pick = pool.splice(i, 1)[0].q;
+      if ((perCh[pick.ch] || 0) >= 4 && pool.some(x => (perCh[x.q.ch] || 0) < 4)) continue;
+      perCh[pick.ch] = (perCh[pick.ch] || 0) + 1;
+      out.push(pick);
+    }
+    return out;
+  }
   function quiz(params) {
+    if (params.get("smart")) return runQuiz(smartPick(20));
     const only = params.get("ch");
     if (only !== null) { S().settings.quizCh = [Number(only)]; A.save(); }
     const st = S().settings;
@@ -207,7 +232,10 @@
     } }, "Start quiz");
     mount(h("h1", null, "Multiple choice"),
       h("p", { class: "muted" }, "Options are shuffled every time. After each answer you get the reasoning and the trap behind the tempting wrong choice."),
-      h("h3", null, "Chapters"), picker.el, h("h3", null, "Questions"), modeRow, nRow, h("div", { class: "row" }, startBtn));
+      h("div", { class: "panel smart" },
+        h("div", null, h("strong", null, "Smart quiz"), h("p", { class: "muted small" }, "20 questions picked for you: mostly your weakest chapters, questions you missed, and exam-flagged topics, with every chapter still in the mix.")),
+        h("button", { class: "btn primary big", onclick: () => runQuiz(smartPick(20)) }, "Start smart quiz")),
+      h("h3", null, "Or build your own: chapters"), picker.el, h("h3", null, "Questions"), modeRow, nRow, h("div", { class: "row" }, startBtn));
   }
   function shuffledOptions(q, seed) {
     const order = A.rng(seed).shuffle([0, 1, 2, 3]);
